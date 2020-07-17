@@ -9,10 +9,16 @@
 #define __PRIME 0x100000001b3
 #define __REGIONS 5
 
-//Cache structure
-typedef struct cache_entry_tag {
+typedef struct node_tag {
   unsigned long key;
   void* value;
+  struct node_tag *next;
+} node_t;
+
+//Cache structure
+typedef struct cache_entry_tag {
+  node_t *node;
+  node_t *end;
 } cache_entry_t;
 
 typedef struct region_tag {
@@ -36,6 +42,8 @@ void init() {
     __ERR_REPO(status, "Condition initialization");
 
     region[i].cache = malloc(sizeof(cache_entry_t) * __INIT_SIZE);
+    memset(region[i].cache, 0, sizeof(cache_entry_t) * __INIT_SIZE);
+    
     region[i].c_size = 0;
     region[i].t_size = __INIT_SIZE;
   }
@@ -74,10 +82,29 @@ void put(int key, value_t* val) {
   __ERR_REPO(status, "Mutex lock");
 
   if (reg.c_size+1 < reg.t_size) {
-    reg.cache[l].key = key;
-    reg.cache[l].value = val;
+    //Adding key to node for the first time.
+    if (reg.cache[l].node == NULL) {
+      reg.cache[l].node = malloc(sizeof(node_t));
+      reg.cache[l].node->key = key;
+      reg.cache[l].node->value = val;
+      reg.cache[l].node->next = NULL;
+      reg.cache[l].end = reg.cache[l].node;
+    } else {
+      //There's already a value at the location. Add to linked list.
+      #ifdef __DEBUG
+      printf("Place already taken by key: %lu\n", reg.cache[l].node->key);
+      #endif
+      node_t *new_nd = malloc(sizeof(node_t));
+      new_nd->next = NULL;
+      new_nd->key = key;
+      new_nd->value = val;
+      reg.cache[l].end->next = new_nd;
+      reg.cache[l].end = new_nd;
+    }
+    
     reg.c_size++;
-  }
+  } else 
+    printf("Cache full.\n");
 
   #ifdef __DEBUG
   printf("Added key %d to region:location: %d:%d and size is now: %d\n", key,r, l, reg.c_size);
@@ -91,21 +118,27 @@ void put(int key, value_t* val) {
 }
 
 void put_if_absent(int key, value_t* val) {
+  
 }
 
 value_t *get(int key) {
-  value_t* val;
   uint64_t hash = calculateHash(key);
   int r = hash % 5; //region
   int l = find_location(hash);
 
-  val = region[r].cache[l].value;
-  return val;
+  node_t *n = region[r].cache[l].node;
+  while (n != NULL && n->key != key) n = n->next;
+
+  if (n == NULL)
+    return NULL;
+  else
+    return n->value;
 }
 
 /*
 TODO
 ====
+* During get search for all the keys in the linked list.
 * Dynamically increase the cache size per region.
 * If element not found in get, then return NULL
 * Multi-threaded long running test to check for memory leaks. 
@@ -117,4 +150,5 @@ Done.
 * Locks on individual regions.
 * Reads without locking.
 * Writes lock individual regions.
+* If key hashes to same location, then add to linked list
 */

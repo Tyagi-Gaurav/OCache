@@ -24,9 +24,9 @@ setup:
 all : clean setup generate_test test
 
 debug: clean setup
-debug: CFLAGS += -g
+debug: CFLAGS += -g -D__DEBUG
 debug: $(OBJECTS) $(TEST_OBJECTS)
-debug: generate_test
+debug: generate_test test
 
 generate_test: $(OBJECTS) $(TEST_OBJECTS)
 	$(CC) $^ $(TST_LIBS) -o $(EXE_NAME)
