@@ -54,10 +54,10 @@ void destroy() {
   
 }
 
-int find_location(uint64_t hash) {
+int find_location(uint64_t hash, int size) {
   uint32_t l = (uint32_t) hash;
   uint32_t h = hash >> 32;
-  return (l&h) % __INIT_SIZE;
+  return (l&h) % size;
 }
 
 unsigned long calculateHash(int key) {
@@ -72,42 +72,81 @@ unsigned long calculateHash(int key) {
   return hash;
 }
 
-void put(int key, value_t* val) {
-  uint64_t hash = calculateHash(key);
-  int r = hash % 5; //region
-  int l = find_location(hash);
-  region_t reg = region[r];
-  
-  status = pthread_mutex_lock(&reg.mutex);
-  __ERR_REPO(status, "Mutex lock");
-
-  if (reg.c_size+1 < reg.t_size) {
-    //Adding key to node for the first time.
-    if (reg.cache[l].node == NULL) {
-      reg.cache[l].node = malloc(sizeof(node_t));
-      reg.cache[l].node->key = key;
-      reg.cache[l].node->value = val;
-      reg.cache[l].node->next = NULL;
-      reg.cache[l].end = reg.cache[l].node;
+void add_to_cache(cache_entry_t *cache, int key, void *val) {
+  //Adding key to node for the first time.
+    if (cache->node == NULL) {
+      cache->node = malloc(sizeof(node_t));
+      cache->node->key = key;
+      cache->node->value = val;
+      cache->node->next = NULL;
+      cache->end = cache->node;
     } else {
       //There's already a value at the location. Add to linked list.
       #ifdef __DEBUG
-      printf("Place already taken by key: %lu\n", reg.cache[l].node->key);
+      printf("Place already taken by key: %lu\n", cache->node->key);
       #endif
       node_t *new_nd = malloc(sizeof(node_t));
       new_nd->next = NULL;
       new_nd->key = key;
       new_nd->value = val;
-      reg.cache[l].end->next = new_nd;
-      reg.cache[l].end = new_nd;
+      cache->end->next = new_nd;
+      cache->end = new_nd;
     }
+}
+
+void put(int key, value_t* val) {
+  uint64_t hash = calculateHash(key);
+  int r = hash % 5; //region
+  int l = find_location(hash, region[r].t_size);
+  region_t reg = region[r];
+  
+  status = pthread_mutex_lock(&reg.mutex);
+  __ERR_REPO(status, "Mutex lock");
+
+  if (region[r].c_size+1 <= region[r].t_size) {
+    add_to_cache(&region[r].cache[l], key, val);
+    region[r].c_size++;
+  } else {
+    printf("Cache full. Cannot add key: %d\n", key);
+    /*
+      Resize
+      ------
+      3. Update indices.
+      4. Free old cache.
+     */
+
+    //Create new cache that is double in size
+    int n_size = region[r].t_size * 2;
+    cache_entry_t *new_cache = malloc(sizeof(cache_entry_t) * n_size);
+    memset(region[r].cache, 0, n_size);
     
-    reg.c_size++;
-  } else 
-    printf("Cache full.\n");
+    //Rehash
+    for (int i=0; i < region[r].c_size;++i) {
+      node_t *node = region[r].cache[i].node;
+
+      while (node != NULL) {
+	int k = node->key;
+	void *v = node->value;
+	uint64_t nh = calculateHash(k);
+	int nl = find_location(nh, n_size);
+	add_to_cache(&new_cache, k, v);
+
+	node = node->next;
+      }
+      
+    //Add the new element to cache
+    add_to_cache(&new_cache, key, val);
+
+    //Update indices and free old cache
+    cache_entry_t *old_cache = region[r].cache;
+    region[r].cache = new_cache;
+    region[r].c_size++;
+    free(old_cache);
+  }
+  }
 
   #ifdef __DEBUG
-  printf("Added key %d to region:location: %d:%d and size is now: %d\n", key,r, l, reg.c_size);
+  printf("Added key %d to region:location: %d:%d and size is now: %d\n", key,r, l, region[r].c_size);
   #endif
   
   status = pthread_cond_signal(&reg.write_cond);
@@ -117,14 +156,12 @@ void put(int key, value_t* val) {
   __ERR_REPO(status, "Mutex unlock");
 }
 
-void put_if_absent(int key, value_t* val) {
-  
-}
+void put_if_absent(int key, value_t* val) {}
 
 value_t *get(int key) {
   uint64_t hash = calculateHash(key);
   int r = hash % 5; //region
-  int l = find_location(hash);
+  int l = find_location(hash, region[r].t_size);
 
   node_t *n = region[r].cache[l].node;
   while (n != NULL && n->key != key) n = n->next;
@@ -138,9 +175,7 @@ value_t *get(int key) {
 /*
 TODO
 ====
-* During get search for all the keys in the linked list.
 * Dynamically increase the cache size per region.
-* If element not found in get, then return NULL
 * Multi-threaded long running test to check for memory leaks. 
 * Run valgrind on the code
 
@@ -151,4 +186,6 @@ Done.
 * Reads without locking.
 * Writes lock individual regions.
 * If key hashes to same location, then add to linked list
+* During get search for all the keys in the linked list.
+* If element not found in get, then return NULL
 */

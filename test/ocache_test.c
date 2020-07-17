@@ -4,6 +4,13 @@
 #include "../src/ocache.h"
 #include <stdio.h>
 
+START_TEST(test_cache_single_read) {
+  init();
+  value_t *actual = get(254);
+  ck_assert_ptr_eq(actual, NULL);
+  destroy();
+}
+
 START_TEST(test_cache_single_write_and_read) {
   init();
   time_t exp_ttl = time(NULL);
@@ -39,6 +46,20 @@ START_TEST(test_cache_single_write_and_read) {
   ac_val = (value_t*)actual;
   ck_assert_ptr_eq(ac_val->data, (int *)28);
   ck_assert_int_eq(ac_val->ttl, exp_ttl);
+  destroy();
+}
+
+START_TEST(test_cache_multiple_write_increase_cache_size) {
+  init();
+  time_t exp_ttl = time(NULL);
+  value_t *val = malloc(sizeof(val));
+  val->data = (int *)24;
+  val->ttl = exp_ttl;
+  put(254, val);
+  put(183, val);
+  put(199, val);
+  put(278, val);
+  put(173, val);
 
   destroy();
 }
@@ -50,8 +71,10 @@ Suite* ocache_suite(void) {
   s = suite_create("cache suite");
   tc_core = tcase_create("Core tests");
 
-  tcase_add_test(tc_core, test_cache_single_write_and_read);
-
+  tcase_add_test(tc_core, test_cache_multiple_write_increase_cache_size);
+  //tcase_add_test(tc_core, test_cache_single_write_and_read);
+  //tcase_add_test(tc_core, test_cache_single_read);
+  
   suite_add_tcase(s, tc_core);
   return s;
 }
