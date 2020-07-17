@@ -11,12 +11,21 @@ START_TEST(test_cache_single_write_and_read) {
   val->data = (int *)24;
   val->ttl = exp_ttl;
   put(254, val);
+  put(183, val);
+  put(199, val);
 
   value_t *actual = get(254);
   ck_assert_ptr_ne(actual, NULL);
   value_t* ac_val = (value_t*)actual;
   ck_assert_ptr_eq(ac_val->data, (int *)24);
   ck_assert_int_eq(ac_val->ttl, exp_ttl);
+
+  actual = get(199);
+  ck_assert_ptr_ne(actual, NULL);
+  ac_val = (value_t*)actual;
+  ck_assert_ptr_eq(ac_val->data, (int *)24);
+  ck_assert_int_eq(ac_val->ttl, exp_ttl);
+
   destroy();
 }
 
