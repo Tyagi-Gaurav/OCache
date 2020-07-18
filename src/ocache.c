@@ -3,6 +3,8 @@
 #include "ocache.h"
 #include "errors.h"
 #include <math.h>
+#include <signal.h>
+#include <execinfo.h>
 
 #define __INIT_SIZE 2
 #define __OFFSET_BASIS 0xcbf29ce484222325
@@ -32,8 +34,22 @@ typedef struct region_tag {
 region_t region[__REGIONS];
 int status;
 
+void handler(int sig) {
+  void *array[10];
+  size_t size;
+
+  //Get all entries on the stack.
+  size = backtrace(array, 10);
+
+  //print out all the frames to stderr
+  fprintf(stderr, "Error: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
+
 void init() {
   printf("Initializing Cache.\n");
+  signal(SIGTRAP, handler);
   for(int i=0;i < __REGIONS;++i) {
     status = pthread_mutex_init(&region[i].mutex, NULL);
     __ERR_REPO(status, "Mutex initialization");
@@ -50,9 +66,7 @@ void init() {
   printf("Cache Initialized.\n");
 }
 
-void destroy() {
-  
-}
+void destroy() {}
 
 int find_location(uint64_t hash, int size) {
   uint32_t l = (uint32_t) hash;
@@ -107,7 +121,9 @@ void put(int key, value_t* val) {
     add_to_cache(&region[r].cache[l], key, val);
     region[r].c_size++;
   } else {
+    #ifdef __DEBUG
     printf("Cache full. Cannot add key: %d\n", key);
+    #endif
     /*
       Resize
       ------
@@ -118,7 +134,11 @@ void put(int key, value_t* val) {
     //Create new cache that is double in size
     int n_size = region[r].t_size * 2;
     cache_entry_t *new_cache = malloc(sizeof(cache_entry_t) * n_size);
-    memset(region[r].cache, 0, n_size);
+    memset(new_cache, 0, n_size);
+
+    #ifdef __DEBUG
+    printf("Initialized new cache. Moving the hashes now.\n");
+    #endif
     
     //Rehash
     for (int i=0; i < region[r].c_size;++i) {
@@ -129,20 +149,25 @@ void put(int key, value_t* val) {
 	void *v = node->value;
 	uint64_t nh = calculateHash(k);
 	int nl = find_location(nh, n_size);
-	add_to_cache(&new_cache, k, v);
-
+	#ifdef __DEBUG
+	printf("Adding to new cache: %d at location %d\n", k, nl);
+        #endif
+	add_to_cache(&new_cache[nl], k, v);
 	node = node->next;
-      }
-      
+      }//End-while
+
+    }//End-for
+    
     //Add the new element to cache
-    add_to_cache(&new_cache, key, val);
+    hash = calculateHash(key);
+    l = find_location(hash, n_size);
+    add_to_cache(&new_cache[l], key, val);
 
     //Update indices and free old cache
     cache_entry_t *old_cache = region[r].cache;
     region[r].cache = new_cache;
     region[r].c_size++;
     free(old_cache);
-  }
   }
 
   #ifdef __DEBUG
@@ -172,15 +197,19 @@ value_t *get(int key) {
     return n->value;
 }
 
+
+
 /*
 TODO
 ====
-* Dynamically increase the cache size per region.
+* Anything with cache lines?
 * Multi-threaded long running test to check for memory leaks. 
 * Run valgrind on the code
 
 Done.
 ====
+* Dynamically increase the cache size per region.
+* Install Trace/BPT and SIGNAL handlers to exit gracefully.
 * Divided into regions 
 * Locks on individual regions.
 * Reads without locking.
