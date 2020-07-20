@@ -31,21 +31,18 @@ START_TEST(test_cache_single_write_and_read) {
 
   value_t *actual = get(254);
   ck_assert_ptr_ne(actual, NULL);
-  value_t* ac_val = (value_t*)actual;
-  ck_assert_ptr_eq(ac_val->data, (int *)24);
-  ck_assert_int_eq(ac_val->ttl, exp_ttl);
+  ck_assert_ptr_eq(actual->data, (int *)24);
+  ck_assert_int_eq(actual->ttl, exp_ttl);
 
   actual = get(183);
   ck_assert_ptr_ne(actual, NULL);
-  ac_val = (value_t*)actual;
-  ck_assert_ptr_eq(ac_val->data, (int *)26);
-  ck_assert_int_eq(ac_val->ttl, exp_ttl);
+  ck_assert_ptr_eq(actual->data, (int *)26);
+  ck_assert_int_eq(actual->ttl, exp_ttl);
 
   actual = get(199);
   ck_assert_ptr_ne(actual, NULL);
-  ac_val = (value_t*)actual;
-  ck_assert_ptr_eq(ac_val->data, (int *)28);
-  ck_assert_int_eq(ac_val->ttl, exp_ttl);
+  ck_assert_ptr_eq(actual->data, (int *)28);
+  ck_assert_int_eq(actual->ttl, exp_ttl);
   destroy();
 }
 
@@ -72,8 +69,8 @@ Suite* ocache_suite(void) {
   tc_core = tcase_create("Core tests");
 
   tcase_add_test(tc_core, test_cache_multiple_write_increase_cache_size);
-  //tcase_add_test(tc_core, test_cache_single_write_and_read);
-  //tcase_add_test(tc_core, test_cache_single_read);
+  tcase_add_test(tc_core, test_cache_single_write_and_read);
+  tcase_add_test(tc_core, test_cache_single_read);
   
   suite_add_tcase(s, tc_core);
   return s;

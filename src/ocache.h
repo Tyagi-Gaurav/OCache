@@ -2,6 +2,7 @@
 #define __OCACHE_H
 
 #include <pthread.h>
+#include "errors.h"
 #include <stdio.h>
 
 typedef struct value_tag {
