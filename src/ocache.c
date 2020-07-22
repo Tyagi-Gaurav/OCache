@@ -64,9 +64,9 @@ void init() {
     region[i].c_size = 0;
     region[i].t_size = __INIT_SIZE;
   }
-  #ifdef __DEBUG
+#ifdef __DEBUG
   printf("Cache Initialized.\n");
-  #endif
+#endif
 }
 
 void destroy() {}
@@ -90,9 +90,6 @@ unsigned long calculateHash(int key) {
 }
 
 void add_to_cache(cache_entry_t *cache, int key, void *val) {
-  #ifdef __DEBUG
-  printf("Adding to cache: %d with TTL %ld\n", key, ((value_t*)val)->ttl);
-  #endif
   //Adding key to node for the first time.
     if (cache->node == NULL) {
       cache->node = malloc(sizeof(node_t));
@@ -102,9 +99,9 @@ void add_to_cache(cache_entry_t *cache, int key, void *val) {
       cache->end = cache->node;
     } else {
       //There's already a value at the location. Add to linked list.
-      #ifdef __TRACE
+#ifdef __TRACE
       printf("Place already taken by key: %lu\n", cache->node->key);
-      #endif
+#endif
       node_t *new_nd = malloc(sizeof(node_t));
       new_nd->next = NULL;
       new_nd->key = key;
@@ -124,12 +121,15 @@ void put(int key, value_t* val) {
   __ERR_REPO(status, "Mutex lock");
 
   if (region[r].c_size+1 <= region[r].t_size) {
+#ifdef __DEBUG
+    printf("Thread %d: Adding to region %d: %d with TTL %ld\n", pthread_self(), r, key, ((value_t*)val)->ttl);
+#endif
     add_to_cache(&region[r].cache[l], key, val);
     region[r].c_size++;
   } else {
-    #ifdef __TRACE
+#ifdef __TRACE
     printf("Region %d full. Cannot add key: %d\n", r, key);
-    #endif
+#endif
 
     status = pthread_mutex_lock(&region[r].mutex_resize);
     __ERR_REPO(status, "Resize mutex lock");
@@ -139,11 +139,12 @@ void put(int key, value_t* val) {
     cache_entry_t *new_cache = malloc(sizeof(cache_entry_t) * n_size);
     memset(new_cache, 0, n_size);
 
-    #ifdef __TRACE
-    printf("Initialized new region. Moving the items now.\n");
-    #endif
+#ifdef __DEBUG
+    printf("Starting to resize region %d to %d.\n", r, n_size);
+#endif
+    region[r].t_size = n_size;
     
-    //Rehash
+     //Rehash
     for (int i=0; i < region[r].c_size;++i) {
       node_t *node = region[r].cache[i].node;
 
@@ -152,21 +153,27 @@ void put(int key, value_t* val) {
 	void *v = node->value;
 	uint64_t nh = calculateHash(k);
 	int nl = find_location(nh, n_size);
-	#ifdef __TRACE
-	printf("Adding to new cache: %d at location %d\n", k, nl);
-        #endif
+	node->key = 0; node->value = NULL;
+#ifdef __DEBUG
+	printf("Thread %d: Re-adding to region %d: %d with TTL %zu\n", pthread_self(), r, k, ((value_t*)v)->ttl);
+#endif
 	add_to_cache(&new_cache[nl], k, v);
+#ifdef __DEBUG
+	printf("Thread %d: Re-added to region %d: %d with TTL %zu\n", pthread_self(), r, k, ((value_t*)v)->ttl);
+#endif	
 	node = node->next;
+	#ifdef __DEBUG
+	printf("Thread %d: Got next node.\n");
+#endif	
       }//End-while
-
     }//End-for
     
     //Add the new element to cache
     hash = calculateHash(key);
     l = find_location(hash, n_size);
-    #ifdef __DEBUG
-    printf("New Location: %d with size: %d\n", l, n_size);
-    #endif
+#ifdef __DEBUG
+    printf("Thread %d: Adding original to region %d: %d with TTL %ld\n", pthread_self(), r, key, ((value_t*)val)->ttl);
+#endif    
     add_to_cache(&new_cache[l], key, val);
 
     //Update indices and free old cache
@@ -177,11 +184,11 @@ void put(int key, value_t* val) {
     
     status = pthread_mutex_unlock(&region[r].mutex_resize);
     __ERR_REPO(status, "Resize mutex unlock");
-  }
+  }//End-if
 
-  #ifdef __TRACE
-  printf("Added key %d to region:location: %d:%d and size is now: %d\n", key,r, l, region[r].c_size);
-  #endif
+#ifdef __TRACE
+  printf("Thread %d: Added key %d to region:location: %d:%d and size is now: %d\n", pthread_self(), key,r, l, region[r].c_size);
+#endif
   
   status = pthread_mutex_unlock(&reg.mutex);
   __ERR_REPO(status, "Mutex unlock");
@@ -193,9 +200,13 @@ value_t *get(int key) {
   value_t *result = NULL;
   uint64_t hash = calculateHash(key);
   int r = hash % __REGIONS; //region
-
+  
   status = pthread_mutex_lock(&region[r].mutex_resize);
   __ERR_REPO(status, "Resize mutex lock");
+
+#ifdef __DEBUG
+  printf("Looking for key %d in region %d\n", key, r);
+#endif
   
   int l = find_location(hash, region[r].t_size);
 
@@ -210,8 +221,6 @@ value_t *get(int key) {
   
   return result;
 }
-
-
 
 /*
 TODO
@@ -230,5 +239,6 @@ Done.
 * During get search for all the keys in the linked list.
 * If element not found in get, then return NULL
 * Run valgrind on the code
+   valgrind -v --leak-check=full ./ocache_multi
 * Multi-threaded long running test to check for memory leaks. 
 */

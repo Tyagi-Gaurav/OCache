@@ -5,6 +5,11 @@
 
 #define MAX_THREADS 3
 
+typedef struct args_tag {
+  int thread_id;
+  int seed;
+}args_t;
+
 
 pthread_once_t once_block = PTHREAD_ONCE_INIT;
 pthread_mutex_t mutex;
@@ -21,17 +26,19 @@ void once_init_routine(void) {
 }
 
 void *thread_routine(void* args) {
-  int status;
+  int status;  
   status = pthread_once(&once_block, once_init_routine);
-
-  int* id = (int*)args;
+  
+  args_t *i_args = (args_t*)args;
+  int id = pthread_self(); //i_args->thread_id;
+  srand(i_args->seed + 86400 * id);
   
   while (1) {
     pthread_testcancel();
     
     //Get random number
     int r = rand();
-
+    
     //Create Value
     time_t exp_ttl = time(NULL) + r;
     value_t *val = malloc(sizeof(val));
@@ -39,7 +46,7 @@ void *thread_routine(void* args) {
     val->ttl = exp_ttl;
 
     //Put it into cache
-    printf("Thread %d:  value adding %d with TTL: %ld\n", *id, r, exp_ttl);
+    printf("Thread %d:  value adding %d with TTL: %ld\n", id, r, exp_ttl);
     put(r, val);
 
     //Sleep for x seconds
@@ -50,17 +57,17 @@ void *thread_routine(void* args) {
 
     //compare they are equal
     if (actual == NULL) {
-      printf("Thread %d: Actual pointer is null\n", *id);
+      printf("Thread %d: Actual pointer is null for key %d\n", id, r);
       abort();
     }
 
     if (actual->data != (int*)24) {
-      printf("Thread %d: Data does not match\n", *id);
+      printf("Thread %d: Data does not match\n", id);
       abort();
     }
     
     if (actual->ttl != exp_ttl) {
-      printf("Thread %d: TTL does not match. Actual: %ld, exp: %ld\n", *id, actual->ttl, exp_ttl);
+      printf("Thread %d: TTL does not match. Actual: %ld, exp: %ld\n", id, actual->ttl, exp_ttl);
       abort();
     }
 
@@ -73,17 +80,21 @@ void *thread_routine(void* args) {
 int main(int argc, char **argv) {
   pthread_t thread_id[MAX_THREADS];
   int status;
+  time_t t;
   status = pthread_once(&once_block, once_init_routine);
   __ERR_REPO(status, "Once init");
+
+  srand((unsigned)time(&t));
   
   for (int i=0;i < MAX_THREADS;++i) {
-    int j = i;
-    status = pthread_create(&thread_id[i], NULL, thread_routine, (int*)&j);
+    args_t args = {i+1, rand()};
+    status = pthread_create(&thread_id[i], NULL, thread_routine, (void*)&args);
+    sleep(4);
     __ERR_REPO(status, "Create thread");
   }
 
   //Wait for duration of the test and then stop
-  sleep(20); //5 min
+  sleep(60); //Seconds
 
   //Stop the threads
   for (int i=0;i < MAX_THREADS;++i) {
