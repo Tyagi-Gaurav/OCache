@@ -50,24 +50,24 @@ void *thread_routine(void* args) {
     put(r, val);
 
     //Sleep for x seconds
-    sleep(1);
+    //sleep(1);
 
     //get the value back from cache
     value_t *actual = get(r);
 
     //compare they are equal
     if (actual == NULL) {
-      printf("Thread %d: Actual pointer is null for key %d\n", id, r);
+      printf("***** Thread %d: Actual pointer is null for key %d\n", id, r);
       abort();
     }
 
     if (actual->data != (int*)24) {
-      printf("Thread %d: Data does not match\n", id);
+      printf("***** Thread %d: Data does not match\n", id);
       abort();
     }
     
     if (actual->ttl != exp_ttl) {
-      printf("Thread %d: TTL does not match. Actual: %ld, exp: %ld\n", id, actual->ttl, exp_ttl);
+      printf("***** Thread %d: TTL does not match for key: %d. Actual: %ld, exp: %ld\n", id, r, actual->ttl, exp_ttl);
       abort();
     }
 

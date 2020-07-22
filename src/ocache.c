@@ -74,6 +74,11 @@ void destroy() {}
 int find_location(uint64_t hash, int size) {
   uint32_t l = (uint32_t) hash;
   uint32_t h = hash >> 32;
+  uint32_t a = l&h;
+  int loc = a % size;
+#ifdef __DEBUG
+  printf("Using l: %lu, h:%lu, l&h: %lu, size: %d, loc: %d\n", l, h, a, size, loc);
+#endif
   return (l&h) % size;
 }
 
@@ -92,11 +97,18 @@ unsigned long calculateHash(int key) {
 void add_to_cache(cache_entry_t *cache, int key, void *val) {
   //Adding key to node for the first time.
     if (cache->node == NULL) {
-      cache->node = malloc(sizeof(node_t));
-      cache->node->key = key;
-      cache->node->value = val;
-      cache->node->next = NULL;
+      node_t *new_nd = malloc(sizeof(node_t));
+      new_nd->next = NULL;
+      new_nd->key = key;
+      new_nd->value = val;
+      cache->node = new_nd;
       cache->end = cache->node;
+#ifdef __DEBUG
+      printf("Added for key: %d, old val: %ld, new val: %ld\n", key, val, cache->node->value);
+#endif
+    } else if ((cache->node)->key == key) {
+      //Same element exists at the location.
+      (cache->node)->value = val;
     } else {
       //There's already a value at the location. Add to linked list.
 #ifdef __TRACE
@@ -106,7 +118,7 @@ void add_to_cache(cache_entry_t *cache, int key, void *val) {
       new_nd->next = NULL;
       new_nd->key = key;
       new_nd->value = val;
-      cache->end->next = new_nd;
+      (cache->end)->next = new_nd;
       cache->end = new_nd;
     }
 }
@@ -114,12 +126,12 @@ void add_to_cache(cache_entry_t *cache, int key, void *val) {
 void put(int key, value_t* val) {
   uint64_t hash = calculateHash(key);
   int r = hash % __REGIONS; //region
-  int l = find_location(hash, region[r].t_size);
   region_t reg = region[r];
   
   status = pthread_mutex_lock(&reg.mutex);
   __ERR_REPO(status, "Mutex lock");
 
+  int l = find_location(hash, region[r].t_size);
   if (region[r].c_size+1 <= region[r].t_size) {
 #ifdef __DEBUG
     printf("Thread %d: Adding to region %d: %d with TTL %ld\n", pthread_self(), r, key, ((value_t*)val)->ttl);
@@ -137,7 +149,7 @@ void put(int key, value_t* val) {
     //Create new cache that is double in size
     int n_size = region[r].t_size * 2;
     cache_entry_t *new_cache = malloc(sizeof(cache_entry_t) * n_size);
-    memset(new_cache, 0, n_size);
+    memset(new_cache, 0, sizeof(cache_entry_t) * n_size);
 
 #ifdef __DEBUG
     printf("Starting to resize region %d to %d.\n", r, n_size);
@@ -153,17 +165,17 @@ void put(int key, value_t* val) {
 	void *v = node->value;
 	uint64_t nh = calculateHash(k);
 	int nl = find_location(nh, n_size);
-	node->key = 0; node->value = NULL;
 #ifdef __DEBUG
-	printf("Thread %d: Re-adding to region %d: %d with TTL %zu\n", pthread_self(), r, k, ((value_t*)v)->ttl);
+	printf("Thread %d: Re-adding to region %d:%d %d with old TTL %ld, new TTL %ld\n", pthread_self(), r, nl, k, node->value, v);
 #endif
+	node->key = 0; node->value = NULL;
 	add_to_cache(&new_cache[nl], k, v);
-#ifdef __DEBUG
-	printf("Thread %d: Re-added to region %d: %d with TTL %zu\n", pthread_self(), r, k, ((value_t*)v)->ttl);
-#endif	
+#ifdef __TRACE
+	printf("Thread %d: Re-added to region %d:%d %d with TTL %ld\n", pthread_self(), r, nl, k, v);
+#endif
 	node = node->next;
-	#ifdef __DEBUG
-	printf("Thread %d: Got next node.\n");
+#ifdef __TRACE
+	printf("Thread %d: While re-adding. Got next node.\n");
 #endif	
       }//End-while
     }//End-for
