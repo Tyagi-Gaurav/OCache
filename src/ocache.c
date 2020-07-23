@@ -74,11 +74,6 @@ void destroy() {}
 int find_location(uint64_t hash, int size) {
   uint32_t l = (uint32_t) hash;
   uint32_t h = hash >> 32;
-  uint32_t a = l&h;
-  int loc = a % size;
-#ifdef __DEBUG
-  printf("Using l: %lu, h:%lu, l&h: %lu, size: %d, loc: %d\n", l, h, a, size, loc);
-#endif
   return (l&h) % size;
 }
 
@@ -102,15 +97,16 @@ void add_to_cache(cache_entry_t *cache, int key, void *val) {
       new_nd->key = key;
       new_nd->value = val;
       cache->node = new_nd;
-      cache->end = cache->node;
+      cache->end = new_nd;;
 #ifdef __DEBUG
-      printf("Added for key: %d, old val: %ld, new val: %ld\n", key, val, cache->node->value);
+      printf("Added for key: %d, old val: %ld, new val: %ld, node: %lu\n", key, val, cache->node->value, new_nd);
 #endif
-    } else if ((cache->node)->key == key) {
-      //Same element exists at the location.
-      (cache->node)->value = val;
     } else {
-      //There's already a value at the location. Add to linked list.
+      node_t *start = cache->node;
+      while (start != NULL && start->key != key)
+	start = start->next;
+
+      if (start == NULL) {
 #ifdef __TRACE
       printf("Place already taken by key: %lu\n", cache->node->key);
 #endif
@@ -120,15 +116,17 @@ void add_to_cache(cache_entry_t *cache, int key, void *val) {
       new_nd->value = val;
       (cache->end)->next = new_nd;
       cache->end = new_nd;
+      } else {
+	start->value = val;
+      }
     }
 }
 
 void put(int key, value_t* val) {
   uint64_t hash = calculateHash(key);
   int r = hash % __REGIONS; //region
-  region_t reg = region[r];
   
-  status = pthread_mutex_lock(&reg.mutex);
+  status = pthread_mutex_lock(&region[r].mutex);
   __ERR_REPO(status, "Mutex lock");
 
   int l = find_location(hash, region[r].t_size);
@@ -202,7 +200,7 @@ void put(int key, value_t* val) {
   printf("Thread %d: Added key %d to region:location: %d:%d and size is now: %d\n", pthread_self(), key,r, l, region[r].c_size);
 #endif
   
-  status = pthread_mutex_unlock(&reg.mutex);
+  status = pthread_mutex_unlock(&region[r].mutex);
   __ERR_REPO(status, "Mutex unlock");
 }
 
@@ -217,7 +215,7 @@ value_t *get(int key) {
   __ERR_REPO(status, "Resize mutex lock");
 
 #ifdef __DEBUG
-  printf("Looking for key %d in region %d\n", key, r);
+  printf("Thread id: %d Looking for key %d in region %d\n", pthread_self(), key, r);
 #endif
   
   int l = find_location(hash, region[r].t_size);

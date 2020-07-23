@@ -30,7 +30,7 @@ void *thread_routine(void* args) {
   status = pthread_once(&once_block, once_init_routine);
   
   args_t *i_args = (args_t*)args;
-  int id = pthread_self(); //i_args->thread_id;
+  int id = pthread_self();
   srand(i_args->seed + 86400 * id);
   
   while (1) {
@@ -46,7 +46,9 @@ void *thread_routine(void* args) {
     val->ttl = exp_ttl;
 
     //Put it into cache
+#ifdef __DEBUG    
     printf("Thread %d:  value adding %d with TTL: %ld\n", id, r, exp_ttl);
+#endif
     put(r, val);
 
     //Sleep for x seconds
