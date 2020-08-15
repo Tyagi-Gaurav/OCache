@@ -1,19 +1,14 @@
-#ifndef __OCACHE_H
-#define __OCACHE_H
-
-#include <pthread.h>
-#include "errors.h"
-#include <stdio.h>
+#ifndef __OCACHE_H_
+#define __OCACHE_H_
 
 typedef struct value_tag {
   void *data;
   time_t ttl;
 } value_t;
 
-void init();
-void put(int key, value_t* value);
-void put_if_absent(int key, value_t* value);
-value_t* get(int key);
-void destroy();
+extern void init();
+extern void put(int key, value_t* value);
+extern value_t* get(int key);
+extern void destroy();
 
 #endif

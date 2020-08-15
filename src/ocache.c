@@ -1,8 +1,9 @@
-
+#include <pthread.h>
 #include "ocache.h"
 #include <math.h>
 #include <signal.h>
 #include <execinfo.h>
+#include "errors.h"
 
 #define __INIT_SIZE 4
 #define __OFFSET_BASIS 0xcbf29ce484222325
@@ -203,8 +204,6 @@ void put(int key, value_t* val) {
   status = pthread_mutex_unlock(&region[r].mutex);
   __ERR_REPO(status, "Mutex unlock");
 }
-
-void put_if_absent(int key, value_t* val) {}
 
 value_t *get(int key) {
   value_t *result = NULL;
