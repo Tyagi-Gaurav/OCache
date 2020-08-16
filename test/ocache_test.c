@@ -61,6 +61,9 @@ START_TEST(test_cache_multiple_write_increase_cache_size) {
   destroy();
 }
 
+#ifndef __OCACHE_SUITE_
+#define __OCACHE_SUITE_
+
 Suite* ocache_suite(void) {
   Suite* s;
   TCase* tc_core;
@@ -75,18 +78,6 @@ Suite* ocache_suite(void) {
   suite_add_tcase(s, tc_core);
   return s;
 }
+#endif
 
-int main(void) {
-  int no_of_failed = 0;
-  Suite* s;
-  SRunner *runner;
 
-  s = ocache_suite();
-  runner = srunner_create(s);
-
-  srunner_run_all(runner, CK_NORMAL);
-  no_of_failed = srunner_ntests_failed(runner);
-
-  srunner_free(runner);
-  return (no_of_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
-}

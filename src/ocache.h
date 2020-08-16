@@ -1,6 +1,8 @@
 #ifndef __OCACHE_H_
 #define __OCACHE_H_
 
+#include <time.h>
+
 typedef struct value_tag {
   void *data;
   time_t ttl;

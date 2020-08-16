@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "errors.h"
 
 #define MAX_THREADS 3
 
@@ -79,7 +80,7 @@ void *thread_routine(void* args) {
   return 0;
 }
 
-int main(int argc, char **argv) {
+int main_1(int argc, char **argv) {
   pthread_t thread_id[MAX_THREADS];
   int status;
   time_t t;
