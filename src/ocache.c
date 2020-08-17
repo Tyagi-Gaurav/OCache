@@ -1,9 +1,9 @@
-#include <pthread.h>
 #include "ocache.h"
 #include <math.h>
 #include <signal.h>
 #include <execinfo.h>
 #include "errors.h"
+#include "rwlock.h"
 
 #define __INIT_SIZE 4
 #define __OFFSET_BASIS 0xcbf29ce484222325
@@ -23,8 +23,7 @@ typedef struct cache_entry_tag {
 } cache_entry_t;
 
 typedef struct region_tag {
-  pthread_mutex_t mutex_resize;
-  pthread_mutex_t mutex;
+  rwlock_t lock;
   cache_entry_t *cache;
   int c_size;
   int t_size;
@@ -33,6 +32,9 @@ typedef struct region_tag {
 region_t region[__REGIONS];
 int status;
 
+/*
+  Signal handler. Useful for debugging any issues.
+*/
 void handler(int sig) {
   void *array[10];
   size_t size;
@@ -53,11 +55,8 @@ void init() {
   signal(SIGTRAP, handler);
   signal(SIGSEGV, handler);
   for(int i=0;i < __REGIONS;++i) {
-    status = pthread_mutex_init(&region[i].mutex, NULL);
-    __ERR_REPO(status, "Mutex initialization");
-
-    status = pthread_mutex_init(&region[i].mutex_resize, NULL);
-    __ERR_REPO(status, "Mutex initialization");
+    status = init_lock(&region[i].lock);
+    __ERR_REPO(status, "Lock initialization");
 
     region[i].cache = malloc(sizeof(cache_entry_t) * __INIT_SIZE);
     memset(region[i].cache, 0, sizeof(cache_entry_t) * __INIT_SIZE);
@@ -127,8 +126,8 @@ void put(int key, value_t* val) {
   uint64_t hash = calculateHash(key);
   int r = hash % __REGIONS; //region
   
-  status = pthread_mutex_lock(&region[r].mutex);
-  __ERR_REPO(status, "Mutex lock");
+  status = writelock(&region[r].lock);
+  __ERR_REPO(status, "Write lock");
 
   int l = find_location(hash, region[r].t_size);
   if (region[r].c_size+1 <= region[r].t_size) {
@@ -142,9 +141,6 @@ void put(int key, value_t* val) {
     printf("Region %d full. Cannot add key: %d\n", r, key);
 #endif
 
-    status = pthread_mutex_lock(&region[r].mutex_resize);
-    __ERR_REPO(status, "Resize mutex lock");
-    
     //Create new cache that is double in size
     int n_size = region[r].t_size * 2;
     cache_entry_t *new_cache = malloc(sizeof(cache_entry_t) * n_size);
@@ -193,16 +189,14 @@ void put(int key, value_t* val) {
     region[r].c_size++;
     free(old_cache);
     
-    status = pthread_mutex_unlock(&region[r].mutex_resize);
-    __ERR_REPO(status, "Resize mutex unlock");
   }//End-if
 
 #ifdef __TRACE
   printf("Thread %d: Added key %d to region:location: %d:%d and size is now: %d\n", pthread_self(), key,r, l, region[r].c_size);
 #endif
   
-  status = pthread_mutex_unlock(&region[r].mutex);
-  __ERR_REPO(status, "Mutex unlock");
+  status = writeunlock(&region[r].lock);
+  __ERR_REPO(status, "Write unlock");
 }
 
 value_t *get(int key) {
@@ -210,7 +204,7 @@ value_t *get(int key) {
   uint64_t hash = calculateHash(key);
   int r = hash % __REGIONS; //region
   
-  status = pthread_mutex_lock(&region[r].mutex_resize);
+  status = readlock(&region[r].lock);
   __ERR_REPO(status, "Resize mutex lock");
 
 #ifdef __DEBUG
@@ -225,7 +219,7 @@ value_t *get(int key) {
   if (n != NULL)
     result = n->value;
 
-  status = pthread_mutex_unlock(&region[r].mutex_resize);
+  status = readunlock(&region[r].lock);
   __ERR_REPO(status, "Resize mutex unlock");
   
   return result;
